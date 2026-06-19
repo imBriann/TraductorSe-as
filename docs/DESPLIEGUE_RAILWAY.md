@@ -119,9 +119,13 @@ El repo incluye un servicio Ollama listo en **`deploy/ollama/`** (Dockerfile +
 El Agente Semántico usará ese Ollama; si falla o aún está descargando, recurre al
 *fallback* (circuit breaker), así que nunca se queda sin responder.
 
-> Nota de red: el servicio web alcanza a Ollama por la **red privada** de Railway
-> (`*.railway.internal`). Si la conexión privada fallara por IPv6, define en el
-> servicio Ollama `OLLAMA_BIND=[::]:11434` para que escuche también en IPv6.
+> Nota de red: el servicio web alcanza a Ollama por la **red privada** de Railway,
+> que es **IPv6**. Por eso el entrypoint hace bind a `[::]:$PORT` (dual-stack) por
+> defecto — necesario para que `*.railway.internal` funcione. Si lo necesitaras,
+> puedes forzar otra dirección con `OLLAMA_BIND`.
+>
+> El host interno se forma con el **nombre del servicio Ollama**. Si lo llamaste
+> `poetic-dream`, usa `OLLAMA_HOST=http://poetic-dream.railway.internal:11434`.
 
 ---
 
@@ -160,4 +164,5 @@ railway up            # construye y despliega desde el Dockerfile
 | Cámara no abre | (raro en Railway) | Asegúrate de usar la URL **https** del dominio |
 | Texto muy básico | Sin LLM | Es el *fallback*; conecta Ollama (§6) |
 | Ollama: healthcheck falla en `/api/v1/health` | Ruta equivocada (es del backend) | En el servicio Ollama: Healthcheck Path = `/` y `PORT=11434` |
-| Ollama: "service unavailable" eterno | El proceso no escucha en `$PORT` | Fija `PORT=11434`; el entrypoint ya hace bind a `0.0.0.0:$PORT` |
+| Ollama: "service unavailable" eterno | El proceso no escucha en `$PORT` | Fija `PORT=11434`; el entrypoint hace bind a `[::]:$PORT` |
+| `system/info` → `ollama_ok:false` (Ollama Online) | Web service no conecta | (1) `OLLAMA_ENABLED=true` y `OLLAMA_HOST=http://<ollama>.railway.internal:11434`; (2) Ollama debe escuchar en IPv6 `[::]` (ya por defecto); (3) `PORT=11434` en el servicio Ollama |
