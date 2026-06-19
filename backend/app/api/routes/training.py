@@ -55,6 +55,18 @@ async def _stream_logs(proc: asyncio.subprocess.Process) -> None:
     STATE.status = "finished" if STATE.return_code == 0 else "failed"
     STATE.finished_at = datetime.now(timezone.utc).isoformat()
 
+    # Recarga el modelo recién entrenado SIN reiniciar el servicio.
+    if STATE.return_code == 0:
+        try:
+            from app.ml.inference import InferenceEngine
+            eng = InferenceEngine.reload()
+            STATE.logs.append(
+                f"Modelo recargado en caliente (entrenado={eng.trained}, "
+                f"clases={eng.encoder.num_classes})."
+            )
+        except Exception as exc:  # pragma: no cover
+            STATE.logs.append(f"Aviso: no se pudo recargar el modelo: {exc}")
+
 
 @router.post("/start", response_model=TrainingStatus, status_code=status.HTTP_202_ACCEPTED)
 async def start_training(params: TrainParams):
@@ -88,6 +100,14 @@ async def start_training(params: TrainParams):
 @router.get("/status", response_model=TrainingStatus)
 async def training_status():
     return _current_status()
+
+
+@router.post("/reload")
+async def reload_model():
+    """Recarga manualmente el modelo entrenado desde disco (sin reiniciar)."""
+    from app.ml.inference import InferenceEngine
+    eng = InferenceEngine.reload()
+    return {"reloaded": True, "trained": eng.trained, "num_classes": eng.encoder.num_classes}
 
 
 @router.post("/stop", response_model=TrainingStatus)

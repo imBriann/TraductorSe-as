@@ -40,6 +40,20 @@ class InferenceEngine:
                     cls._instance = cls()
         return cls._instance
 
+    @classmethod
+    def reload(cls) -> "InferenceEngine":
+        """Recarga el checkpoint y las etiquetas desde disco en caliente.
+
+        Se usa tras entrenar para que el nuevo modelo entre en servicio sin
+        reiniciar el proceso.
+        """
+        eng = cls.instance()
+        with cls._lock:
+            eng.encoder = LabelEncoder.load(settings.LABELS_PATH)
+            eng.trained = False
+            eng._load()
+        return eng
+
     # --------------------------------------------------------- carga
     def _load(self) -> None:
         self.model = build_model(num_classes=self.encoder.num_classes)

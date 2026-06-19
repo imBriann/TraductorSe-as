@@ -36,3 +36,11 @@ def test_engine_predict_is_deterministic_in_fallback():
     a = engine.predict(seq)
     b = engine.predict(seq)
     assert a == b
+
+
+def test_engine_reload_returns_engine():
+    from app.ml.inference import InferenceEngine
+    eng = InferenceEngine.reload()
+    assert eng is InferenceEngine.instance()
+    assert isinstance(eng.trained, bool)
+    assert eng.encoder.num_classes > 0
