@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gestión de dataset (dev) — LSC i5.0</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { darkMode: 'class' };</script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+  <div class="flex min-h-screen">
+    <div id="nav-slot"></div>
+    <main class="flex-1 p-6 lg:p-10">
+      <div class="mb-6 flex items-center gap-3">
+        <h1 class="text-2xl font-bold">Gestión de dataset</h1>
+        <span class="rounded bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700 dark:bg-amber-900 dark:text-amber-300">MODO DEV</span>
+      </div>
+
+      <div class="grid gap-6 lg:grid-cols-2">
+        <!-- Grabador -->
+        <div class="card overflow-hidden">
+          <div class="relative aspect-video bg-slate-900">
+            <video id="video" class="hidden" playsinline></video>
+            <canvas id="canvas" width="640" height="480" class="h-full w-full object-cover"></canvas>
+            <div id="badge" class="absolute left-3 top-3 hidden rounded-lg bg-rose-600 px-2 py-1 text-xs font-bold text-white">● GRABANDO</div>
+          </div>
+          <div class="space-y-3 p-4">
+            <div class="flex gap-2">
+              <input id="label" class="input" placeholder="Etiqueta (ej: HOLA)" />
+              <button id="camBtn" class="btn-ghost">🎥 Cámara</button>
+            </div>
+            <button id="recBtn" class="btn-primary w-full" disabled>⏺️ Grabar muestra (30 frames)</button>
+            <p id="recInfo" class="text-center text-xs text-slate-400">Inicia la cámara y escribe una etiqueta.</p>
+          </div>
+        </div>
+
+        <!-- Resumen -->
+        <div class="card p-6">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-bold">Clases del dataset</h2>
+            <button id="refreshBtn" class="btn-ghost text-sm">↻ Actualizar</button>
+          </div>
+          <p id="totals" class="mt-1 text-sm text-slate-500">—</p>
+          <div id="classes" class="mt-4 space-y-2 text-sm">Cargando...</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (async () => {
+      const { devMode } = await window.LSC.ui.mountNav("dataset.html");
+      if (!devMode) { window.LSC.ui.toast("Modo desarrollador desactivado", "warn"); location.href = "index.html"; return; }
+      const $ = (id) => document.getElementById(id);
+
+      let camera = null, hands = null, recording = false, frames = [];
+
+      const flatten = (results) => {
+        const vec = new Array(126).fill(0);
+        const list = results.multiHandLandmarks || [];
+        for (let h = 0; h < Math.min(list.length, 2); h++) {
+          const base = h * 21 * 3;
+          list[h].forEach((lm, i) => { const o = base + i*3; vec[o]=lm.x; vec[o+1]=lm.y; vec[o+2]=lm.z; });
+        }
+        return vec;
+      };
+
+      async function loadDataset() {
+        try {
+          const d = await window.LSC.api.dataset();
+          $("totals").textContent = `${d.total_classes} clases · ${d.total_samples} muestras`;
+          $("classes").innerHTML = d.classes.length
+            ? d.classes.map(c => `<div class="flex justify-between rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800"><span class="font-medium">${c.label}</span><span class="text-slate-500">${c.samples}</span></div>`).join("")
+            : '<p class="text-slate-400">Aún no hay clases. Graba la primera muestra.</p>';
+        } catch (e) { $("classes").innerHTML = `<p class="text-rose-500">${e.message}</p>`; }
+      }
+      await loadDataset();
+      $("refreshBtn").addEventListener("click", loadDataset);
+
+      $("camBtn").addEventListener("click", async () => {
+        if (camera) return;
+        const ctx = $("canvas").getContext("2d");
+        hands = new window.Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+        hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+        hands.onResults((results) => {
+          ctx.save(); ctx.clearRect(0,0,640,480); ctx.drawImage(results.image,0,0,640,480);
+          (results.multiHandLandmarks||[]).forEach(lm => {
+            window.drawConnectors(ctx, lm, window.HAND_CONNECTIONS, { color:"#4f46e5", lineWidth:3 });
+            window.drawLandmarks(ctx, lm, { color:"#22d3ee", radius:3 });
+          });
+          ctx.restore();
+          if (recording) {
+            frames.push(flatten(results));
+            $("recInfo").textContent = `Capturando ${frames.length}/30...`;
+            if (frames.length >= 30) finishRecording();
+          }
+        });
+        camera = new window.Camera($("video"), { onFrame: async () => { await hands.send({ image: $("video") }); }, width: 640, height: 480 });
+        await camera.start();
+        $("recBtn").disabled = false;
+        $("recInfo").textContent = "Listo para grabar.";
+        window.LSC.ui.toast("Cámara activa", "success");
+      });
+
+      $("recBtn").addEventListener("click", () => {
+        const label = $("label").value.trim();
+        if (!label) { window.LSC.ui.toast("Escribe una etiqueta", "warn"); return; }
+        recording = true; frames = []; $("badge").classList.remove("hidden"); $("recBtn").disabled = true;
+      });
+
+      async function finishRecording() {
+        recording = false; $("badge").classList.add("hidden"); $("recBtn").disabled = false;
+        try {
+          const res = await window.LSC.api.addSample($("label").value.trim(), frames);
+          window.LSC.ui.toast(`Muestra guardada (${res.label})`, "success");
+          loadDataset();
+        } catch (e) { window.LSC.ui.toast(e.message, "error"); }
+        $("recInfo").textContent = "Listo para grabar.";
+      }
+    })();
+  </script>
+</body>
+</html>

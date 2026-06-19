@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+data/raw/
+data/sequences/
+ml_store/*.pt
+tests/
+.coverage
+htmlcov/

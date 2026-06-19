@@ -1,0 +1,2 @@
+# Artefactos ML (checkpoints .pt y labels.json) generados por ml_training/train.py
+# o montados vía volumen Docker (modelstore -> /app/ml_store).

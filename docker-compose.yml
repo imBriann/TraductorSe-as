@@ -1,0 +1,109 @@
+# ============================================================================
+#  LSC i5.0 — Sistema Inteligente de Interpretación de Lengua de Señas
+#  Orquestación completa: PostgreSQL + Redis + Ollama + Backend + Frontend
+# ============================================================================
+
+services:
+  # ---------------------------------------------------------------- Database
+  db:
+    image: postgres:16-alpine
+    container_name: lsc_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lsc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lsc_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-lsc_db}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/db/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lsc} -d ${POSTGRES_DB:-lsc_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [lscnet]
+
+  # ------------------------------------------------------------------- Redis
+  redis:
+    image: redis:7-alpine
+    container_name: lsc_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redisdata:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [lscnet]
+
+  # ------------------------------------------------------------------ Ollama
+  ollama:
+    image: ollama/ollama:latest
+    container_name: lsc_ollama
+    restart: unless-stopped
+    volumes:
+      - ollamadata:/root/.ollama
+      - ./scripts/ollama-entrypoint.sh:/ollama-entrypoint.sh:ro
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    entrypoint: ["/bin/sh", "/ollama-entrypoint.sh"]
+    environment:
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1}
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks: [lscnet]
+
+  # ----------------------------------------------------------------- Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lsc_backend
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+      - modelstore:/app/ml_store
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    networks: [lscnet]
+
+  # ---------------------------------------------------------------- Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: lsc_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    networks: [lscnet]
+
+volumes:
+  pgdata:
+  redisdata:
+  ollamadata:
+  modelstore:
+
+networks:
+  lscnet:
+    driver: bridge

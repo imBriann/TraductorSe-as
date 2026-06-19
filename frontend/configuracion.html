@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Configuración — LSC i5.0</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { darkMode: 'class' };</script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css" />
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+  <div class="flex min-h-screen">
+    <div id="nav-slot"></div>
+    <main class="flex-1 p-6 lg:p-10">
+      <h1 class="mb-6 text-2xl font-bold">Configuración</h1>
+
+      <div class="grid gap-6 lg:grid-cols-2">
+        <!-- Preferencias -->
+        <div class="card space-y-5 p-6">
+          <h2 class="text-lg font-bold">Preferencias</h2>
+
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-medium">🌓 Modo oscuro</span>
+            <label class="switch"><input id="darkToggle" type="checkbox"><span class="track"></span></label>
+          </div>
+
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-medium">🗃️ Memoria contextual</span>
+            <label class="switch"><input id="ctxToggle" type="checkbox"><span class="track"></span></label>
+          </div>
+          <p class="-mt-3 text-xs text-slate-400">Usa frases y entidades previas para traducir con contexto.</p>
+
+          <div>
+            <label for="threshold" class="mb-1 block text-sm font-medium">
+              Umbral de confianza: <span id="thVal" class="font-bold text-indigo-600">0.65</span>
+            </label>
+            <input id="threshold" type="range" min="0" max="1" step="0.05" value="0.65" class="w-full accent-indigo-600" />
+            <p class="mt-1 text-xs text-slate-400">Más alto = más estricto al aceptar una seña.</p>
+          </div>
+
+          <div>
+            <label for="alias" class="mb-1 block text-sm font-medium">Alias (opcional)</label>
+            <input id="alias" type="text" class="input" maxlength="120" placeholder="Cómo identificar este dispositivo" />
+          </div>
+
+          <button id="saveBtn" class="btn-primary">Guardar preferencias</button>
+        </div>
+
+        <!-- Contexto + estadísticas -->
+        <div class="space-y-6">
+          <div class="card space-y-3 p-6">
+            <h2 class="text-lg font-bold">Conversación / contexto</h2>
+            <p class="text-sm text-slate-500">Limpia la memoria contextual activa (historial de frases y entidades de la sesión).</p>
+            <button id="resetCtxBtn" class="btn-danger">🗑️ Limpiar contexto</button>
+          </div>
+
+          <div class="card p-6">
+            <h2 class="text-lg font-bold">Tu actividad</h2>
+            <div class="mt-4 grid grid-cols-2 gap-4 text-center">
+              <div><p id="stTr" class="text-2xl font-extrabold">—</p><p class="text-xs text-slate-500">Traducciones</p></div>
+              <div><p id="stSess" class="text-2xl font-extrabold">—</p><p class="text-xs text-slate-500">Sesiones</p></div>
+              <div><p id="stConf" class="text-2xl font-extrabold">—</p><p class="text-xs text-slate-500">Confianza media</p></div>
+              <div><p id="stLat" class="text-2xl font-extrabold">—</p><p class="text-xs text-slate-500">Latencia media</p></div>
+            </div>
+            <p class="mt-4 text-xs text-slate-400 break-all">ID de dispositivo: <span id="devId"></span></p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (async () => {
+      await window.LSC.ui.mountNav("configuracion.html");
+      const $ = (id) => document.getElementById(id);
+      $("devId").textContent = window.LSC.config.deviceId;
+
+      let s;
+      try { s = await window.LSC.api.settings(); } catch (e) { window.LSC.ui.toast(e.message, "error"); return; }
+      $("darkToggle").checked = s.dark_mode || document.documentElement.classList.contains("dark");
+      $("ctxToggle").checked = s.context_enabled;
+      const th = (s.confidence_threshold ?? 0.65);
+      $("threshold").value = th; $("thVal").textContent = (+th).toFixed(2);
+      $("alias").value = s.label || "";
+
+      $("threshold").addEventListener("input", (e) => $("thVal").textContent = (+e.target.value).toFixed(2));
+      $("darkToggle").addEventListener("change", () => window.LSC.ui.Theme.toggle());
+
+      $("saveBtn").addEventListener("click", async () => {
+        try {
+          await window.LSC.api.updateSettings({
+            context_enabled: $("ctxToggle").checked,
+            confidence_threshold: parseFloat($("threshold").value),
+            label: $("alias").value.trim() || null,
+            dark_mode: $("darkToggle").checked,
+          });
+          window.LSC.ui.toast("Preferencias guardadas", "success");
+        } catch (e) { window.LSC.ui.toast(e.message, "error"); }
+      });
+
+      $("resetCtxBtn").addEventListener("click", async () => {
+        try { await window.LSC.api.resetContext(); window.LSC.ui.toast("Contexto limpiado", "success"); }
+        catch (e) { window.LSC.ui.toast(e.message, "error"); }
+      });
+
+      try {
+        const st = await window.LSC.api.myStats();
+        $("stTr").textContent = st.total_translations;
+        $("stSess").textContent = st.total_sessions;
+        $("stConf").textContent = (st.avg_confidence * 100).toFixed(0) + "%";
+        $("stLat").textContent = st.avg_latency_ms.toFixed(0) + " ms";
+      } catch (e) { /* sin datos */ }
+    })();
+  </script>
+</body>
+</html>

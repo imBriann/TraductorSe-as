@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Información del sistema — LSC i5.0</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { darkMode: 'class' };</script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css" />
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+  <div class="flex min-h-screen">
+    <div id="nav-slot"></div>
+    <main class="flex-1 p-6 lg:p-10">
+      <h1 class="mb-6 text-2xl font-bold">Información del sistema</h1>
+
+      <div class="grid gap-6 lg:grid-cols-2">
+        <div class="card p-6">
+          <h2 class="text-lg font-bold">Estado</h2>
+          <dl id="statusList" class="mt-4 space-y-2 text-sm">Cargando...</dl>
+        </div>
+        <div class="card p-6">
+          <h2 class="text-lg font-bold">Modelo de IA</h2>
+          <dl id="modelList" class="mt-4 space-y-2 text-sm">Cargando...</dl>
+        </div>
+      </div>
+
+      <div class="card mt-6 p-6">
+        <h2 class="text-lg font-bold">Pipeline de Agentes i5.0</h2>
+        <div id="pipeline" class="mt-4 flex flex-wrap items-center gap-2 text-xs font-semibold sm:text-sm">—</div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (async () => {
+      await window.LSC.ui.mountNav("info.html");
+      const row = (k, v) => `<div class="flex justify-between border-b border-slate-100 py-1.5 dark:border-slate-800"><dt class="text-slate-500">${k}</dt><dd class="font-medium">${v}</dd></div>`;
+      const dot = (ok) => ok ? '<span class="text-emerald-600">● Conectado</span>' : '<span class="text-rose-600">● No disponible</span>';
+      try {
+        const i = await window.LSC.api.systemInfo();
+        document.getElementById("statusList").innerHTML =
+          row("Aplicación", `${i.app_name} v${i.version}`) +
+          row("Entorno", i.environment) +
+          row("Modo desarrollador", i.dev_mode ? "Sí" : "No") +
+          row("Redis (KV Cache)", dot(i.redis_ok)) +
+          row("Ollama / Llama 3.1", dot(i.ollama_ok));
+        document.getElementById("modelList").innerHTML =
+          row("Modelo entrenado", i.model_trained ? "Sí" : "No (modo fallback)") +
+          row("Clases (señas)", i.num_classes) +
+          row("Longitud de secuencia", i.sequence_length + " frames") +
+          row("Umbral de confianza", i.confidence_threshold) +
+          row("TTL de contexto", i.context_ttl_seconds + " s");
+        document.getElementById("pipeline").innerHTML = i.pipeline.map((p, idx) =>
+          `<span class="rounded-lg ${idx === 5 ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' : idx === 6 ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300' : 'bg-slate-100 dark:bg-slate-800'} px-3 py-2">${p}</span>${idx < i.pipeline.length - 1 ? '<span>→</span>' : ''}`
+        ).join("");
+      } catch (e) {
+        document.getElementById("statusList").innerHTML = `<p class="text-rose-500">${e.message}</p>`;
+      }
+    })();
+  </script>
+</body>
+</html>

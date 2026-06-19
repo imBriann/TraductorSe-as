@@ -1,0 +1,24 @@
+# ============================================================================
+#  LSC i5.0 — Override de GPU (NVIDIA) para acelerar Llama 3.1
+#
+#  Requiere en el host: driver NVIDIA (nvidia-smi funcionando) + el paquete
+#  nvidia-container-toolkit instalado y Docker reiniciado.
+#
+#  Uso (combinado con prod):
+#    docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#                   -f docker-compose.gpu.yml up -d --build
+# ============================================================================
+
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: ["gpu"]
+    environment:
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1}
+      # Mantiene el modelo cargado en memoria de la GPU entre peticiones
+      OLLAMA_KEEP_ALIVE: "30m"

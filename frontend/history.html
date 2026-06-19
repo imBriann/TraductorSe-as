@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Historial — LSC i5.0</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { darkMode: 'class' };</script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css" />
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+  <div class="flex min-h-screen">
+    <div id="nav-slot"></div>
+    <main class="flex-1 p-6 lg:p-10">
+      <header class="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 class="text-2xl font-bold">Historial de traducciones</h1>
+          <p class="text-sm text-slate-500">Tus interpretaciones en este dispositivo</p>
+        </div>
+        <div class="flex gap-2">
+          <button data-fmt="pdf" class="btn-ghost exportBtn">📄 PDF</button>
+          <button data-fmt="docx" class="btn-ghost exportBtn">📝 DOCX</button>
+          <button data-fmt="txt" class="btn-ghost exportBtn">📃 TXT</button>
+        </div>
+      </header>
+
+      <div class="card overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="border-b border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800">
+              <tr>
+                <th class="px-5 py-3 font-semibold">Fecha</th>
+                <th class="px-5 py-3 font-semibold">Glosas</th>
+                <th class="px-5 py-3 font-semibold">Texto</th>
+                <th class="px-5 py-3 font-semibold">Ctx</th>
+                <th class="px-5 py-3 font-semibold">Conf.</th>
+                <th class="px-5 py-3"></th>
+              </tr>
+            </thead>
+            <tbody id="rows"><tr><td colspan="6" class="px-5 py-8 text-center text-slate-400">Cargando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (async () => {
+      await window.LSC.ui.mountNav("history.html");
+
+      async function load() {
+        const rows = document.getElementById("rows");
+        try {
+          const items = await window.LSC.api.history(200);
+          if (!items.length) { rows.innerHTML = `<tr><td colspan="6" class="px-5 py-8 text-center text-slate-400">Aún no tienes traducciones.</td></tr>`; return; }
+          rows.innerHTML = items.map(t => `
+            <tr class="border-b border-slate-100 dark:border-slate-800">
+              <td class="px-5 py-3 whitespace-nowrap text-slate-500">${new Date(t.created_at).toLocaleString("es-CO")}</td>
+              <td class="px-5 py-3">${(t.glosses||[]).map(g=>`<span class="mr-1 rounded bg-slate-100 px-2 py-0.5 text-xs dark:bg-slate-800">${g}</span>`).join("")}</td>
+              <td class="px-5 py-3 font-medium">${t.natural_text}</td>
+              <td class="px-5 py-3">${t.used_context ? '🗃️' : '—'}</td>
+              <td class="px-5 py-3">${(t.confidence*100).toFixed(0)}%</td>
+              <td class="px-5 py-3 text-right"><button data-id="${t.id}" class="delBtn text-rose-600 hover:underline">Eliminar</button></td>
+            </tr>`).join("");
+          document.querySelectorAll(".delBtn").forEach(b => b.addEventListener("click", async () => {
+            try { await window.LSC.api.deleteTranslation(b.dataset.id); window.LSC.ui.toast("Eliminada","success"); load(); }
+            catch(e){ window.LSC.ui.toast(e.message,"error"); }
+          }));
+        } catch (e) { rows.innerHTML = `<tr><td colspan="6" class="px-5 py-8 text-center text-rose-500">${e.message}</td></tr>`; }
+      }
+      load();
+
+      document.querySelectorAll(".exportBtn").forEach(btn => btn.addEventListener("click", async () => {
+        const fmt = btn.dataset.fmt;
+        try {
+          const res = await window.LSC.api.request(`/translations/export/${fmt}`);
+          if (!res || !res.ok) throw new Error("No se pudo exportar");
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url; a.download = `traducciones_lsc.${fmt}`; a.click();
+          URL.revokeObjectURL(url);
+        } catch (e) { window.LSC.ui.toast(e.message, "error"); }
+      }));
+    })();
+  </script>
+</body>
+</html>

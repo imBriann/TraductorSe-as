@@ -1,0 +1,54 @@
+# ============================================================================
+#  LSC i5.0 — Override de PRODUCCIÓN
+#  Añade Caddy (HTTPS automático con Let's Encrypt) delante del frontend y
+#  endurece la configuración del backend.
+#
+#  Uso:
+#    docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+#  Requiere en .env:  DOMAIN=tu-dominio.com   (con DNS A apuntando al servidor)
+# ============================================================================
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: lsc_caddy
+    restart: unless-stopped
+    depends_on:
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?Define DOMAIN en .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [lscnet]
+
+  # El backend en modo producción (sin exponer su puerto al host)
+  backend:
+    environment:
+      APP_ENV: production
+      DEBUG: "false"
+      DEV_MODE: "false"
+      ALLOWED_ORIGINS: https://${DOMAIN}
+    ports: !reset []
+
+  # El frontend deja de exponerse directamente: el acceso entra por Caddy.
+  frontend:
+    ports: !reset []
+
+  # Infraestructura interna: no publicar puertos al host en producción.
+  # (Se comunican por la red Docker; solo Caddy queda expuesto en 80/443.)
+  db:
+    ports: !reset []
+  redis:
+    ports: !reset []
+  ollama:
+    ports: !reset []
+
+volumes:
+  caddy_data:
+  caddy_config:

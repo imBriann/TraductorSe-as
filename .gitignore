@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Env / secrets
+.env
+*.local
+
+# ML artifacts
+ml_store/*.pt
+ml_store/*.h5
+ml_store/*.onnx
+data/raw/
+data/processed/
+runs/
+*.ckpt
+
+# Node / frontend build
+node_modules/
+dist/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Docker
+*.log

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Traductor en tiempo real — LSC i5.0</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { darkMode: 'class' };</script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+  <script defer src="js/translator.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+  <div class="flex min-h-screen">
+    <div id="nav-slot"></div>
+    <main class="flex-1 p-6 lg:p-10">
+      <header class="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 class="text-2xl font-bold">Traductor en tiempo real</h1>
+          <p class="text-sm text-slate-500">Haz señas; al pausar, la frase se traduce con contexto.</p>
+        </div>
+        <div class="glass flex items-center gap-2.5 rounded-full px-4 py-2">
+          <span id="statusDot" class="inline-block h-2.5 w-2.5 rounded-full bg-slate-400" aria-hidden="true"></span>
+          <span id="statusText" class="text-sm font-medium" style="color:var(--text-2)">Detenido</span>
+        </div>
+      </header>
+
+      <div class="grid gap-6 lg:grid-cols-3">
+        <div class="card overflow-hidden lg:col-span-2">
+          <div class="relative aspect-video bg-slate-900">
+            <video id="video" class="hidden" playsinline></video>
+            <canvas id="canvas" width="640" height="480" class="h-full w-full object-cover"></canvas>
+            <div id="camOverlay" class="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center text-white">
+              <p class="text-lg font-semibold">La cámara está apagada</p>
+              <button id="overlayStart" class="btn-primary">🎥 Iniciar cámara</button>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center gap-3 p-4">
+            <button id="stopBtn" class="btn-ghost" disabled>⏹️ Detener</button>
+            <button id="finalizeBtn" class="btn-primary" disabled>✅ Traducir ahora</button>
+            <button id="resetBtn" class="btn-ghost" disabled>🗑️ Nueva conversación</button>
+            <div class="ml-auto flex items-center gap-2.5 text-sm" style="color:var(--text-2)">
+              <span>Auto-traducir al pausar</span>
+              <label class="switch"><input id="autoFinalize" type="checkbox" checked><span class="track"></span></label>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-6">
+          <div class="card p-5">
+            <h2 class="text-sm font-semibold text-slate-500">Seña detectada</h2>
+            <p id="gloss" class="mt-2 text-3xl font-extrabold">—</p>
+            <div class="mt-3 h-2 rounded-full bg-slate-100 dark:bg-slate-800">
+              <div id="confBar" class="h-2 rounded-full bg-emerald-500 transition-all" style="width:0%"></div>
+            </div>
+            <p id="confText" class="mt-1 text-xs text-slate-400">Confianza: 0%</p>
+          </div>
+
+          <div class="card p-5">
+            <h2 class="text-sm font-semibold text-slate-500">Frase en construcción</h2>
+            <div id="buffer" class="mt-3 flex flex-wrap gap-2 text-sm">—</div>
+            <h3 class="mt-4 text-xs font-semibold uppercase text-slate-400">Entidades (contexto)</h3>
+            <div id="entities" class="mt-2 flex flex-wrap gap-2 text-xs">—</div>
+          </div>
+
+          <div class="card p-5">
+            <h2 class="text-sm font-semibold text-slate-500">Conversación</h2>
+            <div id="conversation" class="mt-2 space-y-2 text-sm" aria-live="polite">
+              <p class="text-slate-400">Aún no hay frases.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (async () => {
+      await window.LSC.ui.mountNav("translator.html");
+      const $ = (id) => document.getElementById(id);
+
+      const setStatus = (state, detail) => {
+        const map = {
+          running: ["bg-emerald-500", "Capturando"],
+          connected: ["bg-emerald-500", "Conectado"],
+          disconnected: ["bg-amber-500", "Desconectado"],
+          stopped: ["bg-slate-400", "Detenido"],
+          error: ["bg-rose-500", "Error" + (detail ? ": " + detail : "")],
+        };
+        const [cls, txt] = map[state] || map.stopped;
+        $("statusDot").className = "inline-block h-3 w-3 rounded-full " + cls;
+        $("statusText").textContent = txt;
+      };
+
+      const conv = [];
+      const renderConversation = () => {
+        $("conversation").innerHTML = conv.length
+          ? conv.map(t => `<p class="rounded-lg bg-slate-100 px-3 py-2 dark:bg-slate-800">${t}</p>`).join("")
+          : '<p class="text-slate-400">Aún no hay frases.</p>';
+      };
+
+      const engine = new window.LSC.TranslatorEngine({
+        videoEl: $("video"),
+        canvasEl: $("canvas"),
+        onStatus: setStatus,
+        onPartial: (m) => {
+          $("gloss").textContent = m.gloss || "—";
+          const pct = Math.round((m.confidence || 0) * 100);
+          $("confBar").style.width = pct + "%";
+          $("confText").textContent = "Confianza: " + pct + "%";
+          $("buffer").innerHTML = (m.buffer && m.buffer.length)
+            ? m.buffer.map(g => `<span class="rounded-lg bg-indigo-100 px-2.5 py-1 font-medium text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">${g}</span>`).join("")
+            : "—";
+          const ents = Object.entries(m.entities || {});
+          $("entities").innerHTML = ents.length
+            ? ents.map(([k, v]) => `<span class="rounded bg-amber-100 px-2 py-0.5 text-amber-700 dark:bg-amber-950 dark:text-amber-300">${k}: ${v}</span>`).join("")
+            : "—";
+        },
+        onFinal: (m) => {
+          if (m.text) { conv.push(m.text); renderConversation(); }
+          $("buffer").innerHTML = "—";
+          window.LSC.ui.toast(`${m.used_context ? "🗃️ contextual · " : ""}${m.latency_ms} ms`, "success");
+        },
+      });
+
+      const startCamera = async () => {
+        try {
+          await engine.start();
+          $("camOverlay").classList.add("hidden");
+          ["stopBtn","finalizeBtn","resetBtn"].forEach(id => $(id).disabled = false);
+          document.querySelector(".aspect-video").classList.add("recording");
+        } catch (e) { window.LSC.ui.toast("No se pudo acceder a la cámara: " + e.message, "error"); }
+      };
+
+      $("overlayStart").addEventListener("click", startCamera);
+      $("stopBtn").addEventListener("click", () => {
+        engine.stop();
+        ["stopBtn","finalizeBtn","resetBtn"].forEach(id => $(id).disabled = true);
+        $("camOverlay").classList.remove("hidden");
+        document.querySelector(".aspect-video").classList.remove("recording");
+      });
+      $("finalizeBtn").addEventListener("click", () => engine.finalize());
+      $("resetBtn").addEventListener("click", () => {
+        engine.reset(); conv.length = 0; renderConversation();
+        $("buffer").innerHTML = "—"; $("entities").innerHTML = "—";
+        window.LSC.ui.toast("Conversación reiniciada", "info");
+      });
+      $("autoFinalize").addEventListener("change", (e) => { engine.autoFinalize = e.target.checked; });
+      window.addEventListener("beforeunload", () => engine.stop());
+
+      // Auto-arranque desde "Inicio"
+      if (new URLSearchParams(location.search).get("autostart") === "1") {
+        startCamera();
+      }
+    })();
+  </script>
+</body>
+</html>

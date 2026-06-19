@@ -1,0 +1,19 @@
+# Caddy — HTTPS automático (Let's Encrypt) para LSC i5.0
+# El dominio se inyecta desde la variable DOMAIN del .env.
+# Caddy obtiene y renueva el certificado TLS solo; reenvía todo al frontend
+# (Nginx), que a su vez sirve los estáticos y hace proxy de /api y del WebSocket.
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# WebSocket y API + estáticos van al contenedor frontend (Nginx).
+	reverse_proxy frontend:80
+
+	# Cabeceras de seguridad básicas
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
