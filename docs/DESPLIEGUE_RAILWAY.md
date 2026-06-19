@@ -97,13 +97,20 @@ El repo incluye un servicio Ollama listo en **`deploy/ollama/`** (Dockerfile +
 
 1. En tu proyecto Railway: **New → GitHub Repo** (el mismo repo) para crear un
    **segundo servicio**. En sus **Settings**:
-   - **Root Directory** = `deploy/ollama`  (usará ese Dockerfile).
+   - **Root Directory** = `deploy/ollama`  (usa su `Dockerfile` y su `railway.json`).
    - **Enable GPU** (Railway lo expone en la configuración del servicio).
-   - **Variables**: `OLLAMA_MODEL=llama3.1` (o `llama3`).
+   - **Variables**:
+     - `OLLAMA_MODEL=llama3.1` (o `llama3`)
+     - `PORT=11434`  ← **clave**: fija el puerto para que Railway y el servicio
+       web usen el mismo y el healthcheck no falle.
+   - **Healthcheck Path** = `/`  (Ollama responde 200 en `/`; **no** uses
+     `/api/v1/health`, esa ruta es del backend). Ya viene así en
+     `deploy/ollama/railway.json`; si lo configuraste a mano, corrígelo aquí.
    - **Volumes**: añade un volumen montado en `/root/.ollama` para conservar el
      modelo entre despliegues (evita re-descargar los ~5 GB).
 2. Espera a que arranque y descargue el modelo (mira los *Deploy Logs*:
-   `descargando 'llama3.1'...`).
+   `descargando 'llama3.1'...`). El servidor responde el healthcheck enseguida,
+   aunque el modelo siga bajando.
 3. En el **servicio web** (el principal), añade/ajusta variables:
    - `OLLAMA_ENABLED=true`
    - `OLLAMA_HOST=http://<nombre-del-servicio-ollama>.railway.internal:11434`
@@ -151,4 +158,6 @@ railway up            # construye y despliega desde el Dockerfile
 | `connection refused` a la BD | Falta la referencia | `DATABASE_URL=${{Postgres.DATABASE_URL}}` |
 | Healthcheck falla | App aún arrancando | El timeout es 300 s; revisa los *Deploy Logs* |
 | Cámara no abre | (raro en Railway) | Asegúrate de usar la URL **https** del dominio |
-| Texto muy básico | Sin LLM | Es el *fallback*; conecta un Ollama externo (§6) |
+| Texto muy básico | Sin LLM | Es el *fallback*; conecta Ollama (§6) |
+| Ollama: healthcheck falla en `/api/v1/health` | Ruta equivocada (es del backend) | En el servicio Ollama: Healthcheck Path = `/` y `PORT=11434` |
+| Ollama: "service unavailable" eterno | El proceso no escucha en `$PORT` | Fija `PORT=11434`; el entrypoint ya hace bind a `0.0.0.0:$PORT` |

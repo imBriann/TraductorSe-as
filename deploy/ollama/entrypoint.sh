@@ -8,9 +8,10 @@ set -e
 
 MODEL="${OLLAMA_MODEL:-llama3.1}"
 
-# Bind a todas las interfaces para que el servicio web lo alcance por la red
-# privada de Railway (<servicio>.railway.internal:11434).
-export OLLAMA_HOST="${OLLAMA_BIND:-0.0.0.0:11434}"
+# Railway asigna $PORT y enruta el healthcheck/tráfico a ese puerto. Hacemos que
+# Ollama escuche ahí (fija PORT=11434 en el servicio para una URL interna estable).
+PORT="${PORT:-11434}"
+export OLLAMA_HOST="0.0.0.0:${PORT}"
 
 echo "[ollama] iniciando servidor en ${OLLAMA_HOST} ..."
 ollama serve &
