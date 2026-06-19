@@ -45,7 +45,11 @@ class Settings(BaseSettings):
     MODEL_PATH: str = "/app/ml_store/lsc_transformer.pt"
     LABELS_PATH: str = "/app/ml_store/labels.json"
     SEQUENCE_LENGTH: int = 30
-    CONFIDENCE_THRESHOLD: float = 0.65
+    CONFIDENCE_THRESHOLD: float = 0.85   # solo se acepta una seña con prob > 85%
+
+    # Filtros anti-spam de la inferencia en tiempo real
+    DEBOUNCE_SECONDS: float = 1.5        # bloquea repetir la MISMA seña durante N s
+    MOTION_DELTA_THRESHOLD: float = 0.008  # si la mano casi no se mueve, se ignora el frame
 
     # Dataset / entrenamiento (modo dev)
     DATA_DIR: str = "data"

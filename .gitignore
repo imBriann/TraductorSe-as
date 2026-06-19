@@ -14,6 +14,10 @@ htmlcov/
 .env
 *.local
 
+# Bases de datos locales (SQLite de desarrollo/pruebas)
+*.db
+*.sqlite3
+
 # ML artifacts
 ml_store/*.pt
 ml_store/*.h5

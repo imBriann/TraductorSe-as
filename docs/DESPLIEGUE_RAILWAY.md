@@ -5,11 +5,14 @@ sirve el frontend) + **PostgreSQL** y **Redis** gestionados. Railway da
 **HTTPS automático** (`*.up.railway.app`), así que la cámara funciona sin
 configurar certificados.
 
-> **Sobre Llama 3.1 en Railway:** Railway no tiene GPU y el modelo (~5 GB) es
-> pesado en RAM, así que **no se ejecuta Ollama aquí**. La traducción usa el
-> *fallback* gramatical contextual (basado en reglas), que funciona sin LLM.
-> Si quieres calidad de LLM, despliega Ollama en una máquina con GPU aparte y
-> apunta `OLLAMA_HOST` a ella (ver §6).
+> **Sobre Llama 3 en Railway:** Railway **ofrece GPU**, así que puedes desplegar
+> Ollama como un **segundo servicio** (con GPU + volumen) que descarga Llama 3
+> automáticamente (ver §6). Mientras el modelo se descarga —o si prefieres no
+> usar GPU— el sistema sigue funcionando con el *fallback* gramatical contextual.
+>
+> ⚠️ Railway **no usa `docker-compose`**: cada componente es un servicio. Los
+> archivos `docker-compose*.yml` del repo son para un **servidor propio** (VPS),
+> no para Railway. La GPU se activa en los **ajustes del servicio** de Railway.
 
 Arquitectura en Railway:
 
@@ -87,20 +90,31 @@ https://TU-APP.up.railway.app/api/v1/system/info    -> estado (ollama_ok:false e
 
 ---
 
-## 6. (Opcional) Activar Llama 3.1 con un Ollama externo
+## 6. Desplegar Ollama (Llama 3) en Railway con GPU — auto-descarga
 
-Si dispones de una máquina con GPU (u otro proveedor) corriendo Ollama accesible
-por HTTPS:
+El repo incluye un servicio Ollama listo en **`deploy/ollama/`** (Dockerfile +
+`entrypoint.sh`) que **descarga el modelo solo** al arrancar.
 
-1. En esa máquina: `ollama serve` + `ollama pull llama3.1` (ver
-   `docs/DESPLIEGUE_SERVIDOR.md`).
-2. En las variables del servicio Railway:
+1. En tu proyecto Railway: **New → GitHub Repo** (el mismo repo) para crear un
+   **segundo servicio**. En sus **Settings**:
+   - **Root Directory** = `deploy/ollama`  (usará ese Dockerfile).
+   - **Enable GPU** (Railway lo expone en la configuración del servicio).
+   - **Variables**: `OLLAMA_MODEL=llama3.1` (o `llama3`).
+   - **Volumes**: añade un volumen montado en `/root/.ollama` para conservar el
+     modelo entre despliegues (evita re-descargar los ~5 GB).
+2. Espera a que arranque y descargue el modelo (mira los *Deploy Logs*:
+   `descargando 'llama3.1'...`).
+3. En el **servicio web** (el principal), añade/ajusta variables:
    - `OLLAMA_ENABLED=true`
-   - `OLLAMA_HOST=https://tu-ollama-externo:11434`
+   - `OLLAMA_HOST=http://<nombre-del-servicio-ollama>.railway.internal:11434`
    - `OLLAMA_MODEL=llama3.1`
 
-El Agente Semántico usará ese Ollama; si falla, vuelve al *fallback* (circuit
-breaker), así que nunca se queda sin responder.
+El Agente Semántico usará ese Ollama; si falla o aún está descargando, recurre al
+*fallback* (circuit breaker), así que nunca se queda sin responder.
+
+> Nota de red: el servicio web alcanza a Ollama por la **red privada** de Railway
+> (`*.railway.internal`). Si la conexión privada fallara por IPv6, define en el
+> servicio Ollama `OLLAMA_BIND=[::]:11434` para que escuche también en IPv6.
 
 ---
 
