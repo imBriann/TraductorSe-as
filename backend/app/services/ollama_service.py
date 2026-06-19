@@ -94,6 +94,10 @@ class OllamaService:
         history = history or []
         entities = entities or {}
 
+        # Desactivado por configuración (p. ej. Railway sin Ollama) -> fallback directo.
+        if not settings.OLLAMA_ENABLED:
+            return self._local_fallback(glosses, entities), kv
+
         # Circuit breaker: si Ollama falló hace poco, no esperamos; vamos al fallback.
         if time.monotonic() < self._down_until:
             return self._local_fallback(glosses, entities), kv
@@ -130,6 +134,8 @@ class OllamaService:
         return sentence
 
     async def health(self) -> bool:
+        if not settings.OLLAMA_ENABLED:
+            return False
         try:
             async with httpx.AsyncClient(timeout=5) as client:
                 resp = await client.get(f"{self.host}/api/tags")

@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from functools import lru_cache
 from typing import List
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -29,6 +31,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://redis:6379/0"
 
     # Ollama
+    OLLAMA_ENABLED: bool = True          # ponlo en false donde no haya Ollama (p. ej. Railway)
     OLLAMA_HOST: str = "http://ollama:11434"
     OLLAMA_MODEL: str = "llama3.1"
     OLLAMA_TIMEOUT: int = 60
@@ -47,6 +50,28 @@ class Settings(BaseSettings):
     # Dataset / entrenamiento (modo dev)
     DATA_DIR: str = "data"
     MODEL_STORE: str = "ml_store"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def _normalize_db_url(cls, v: str) -> str:
+        """Compatibiliza la URL con el driver async asyncpg.
+
+        Proveedores como Railway/Heroku entregan `postgres://` o `postgresql://`
+        (driver síncrono) y a veces con `?sslmode=...`, que asyncpg no admite en
+        la URL. Aquí se normaliza a `postgresql+asyncpg://` y se limpia la query.
+        """
+        if not isinstance(v, str) or not v:
+            return v
+        if v.startswith("postgres://"):
+            v = "postgresql+asyncpg://" + v[len("postgres://"):]
+        elif v.startswith("postgresql://"):
+            v = "postgresql+asyncpg://" + v[len("postgresql://"):]
+
+        if v.startswith("postgresql+asyncpg://") and "?" in v:
+            parts = urlsplit(v)
+            query = [(k, val) for k, val in parse_qsl(parts.query) if k.lower() != "sslmode"]
+            v = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+        return v
 
     @property
     def cors_origins(self) -> List[str]:

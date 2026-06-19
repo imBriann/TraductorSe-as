@@ -1,0 +1,21 @@
+# Contexto de build para la imagen raíz (Railway)
+**/__pycache__/
+**/*.pyc
+**/.venv/
+**/venv/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+.git/
+.github/
+*.md
+docs/
+data/raw/
+data/sequences/
+**/ml_store/*.pt
+**/*.db
+*.sqlite3
+.env
+backend/tests/
+htmlcov/
+.coverage
